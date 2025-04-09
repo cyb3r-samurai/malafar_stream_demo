@@ -1,0 +1,13 @@
+syntax: glob
+
+# QtCreator artefacts
+*.autosave
+*pro.user.*
+*pro.user
+bin
+build
+bin_windows
+
+# Gedit artefacts
+*~
+
