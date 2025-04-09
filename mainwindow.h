@@ -57,7 +57,8 @@ private:
     QUdpSocket *udp_socket;
     QTimer *timer;
     QSettings *settings;
-    BlockingQueue *thread_safe_queue;
+    QTimer *recieve_timer;
+    BlockingQueue *blocking_queue;
     bool reset_flag;
 
     bool recording;

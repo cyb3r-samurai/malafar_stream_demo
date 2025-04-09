@@ -50,6 +50,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     reset_flag = false;
 
+    blocking_queue = new BlockingQueue;
+
     tcp_socket = new QTcpSocket(this);
     tcp_socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
 
@@ -332,199 +334,34 @@ void MainWindow::readyReadTcp()
 
 void MainWindow::readyReadUdp()
 {
-    // получаем количество секунд для записи из QLineEdit
+    while (udp_socket->hasPendingDatagrams())
+    {
+        QNetworkDatagram datagram = udp_socket->receiveDatagram();
 
-    // bool ok;
-    //    int recordTimeSeconds = ui->recordTimeLineEdit->text().toInt(&ok);
+        stat.sec.packet_counter++;
+        stat.sec.byte_counter += datagram.data().size();
 
-    //    if (!ok || recordTimeSeconds <= 0)
-    //    {
-    //        qDebug() << "Invalid time entered in QLineEdit";
-    //        return;
-    //    }
+        struct packet_header *packet_header =
+            reinterpret_cast<struct packet_header *>(datagram.data().data());
 
-    //    static qint64 startTime = 0;
-    //    qint64 currentTime = QDateTime::currentSecsSinceEpoch();
+        if (checkHeader(packet_header) != true)
+        {
+            return;
+        }
 
-    //    // если время записи не начато, запустим отсчет времени
+        // проверка данных пакета
 
-    //    if (startTime == 0)
-    //    {
-    //        startTime = currentTime;
-    //    }
-
-    //    // если прошло больше времени, чем указано в QLineEdit, прекращаем запись
-
-    //    if (currentTime - startTime >= recordTimeSeconds)
-    //    {
-    //        qDebug() << "Recording time reached. Stopping.";
-    //        return;  // останавливаем обработку пакетов, если время записи закончилось
-    //    }
-
-            while (udp_socket->hasPendingDatagrams())
-            {
-                QNetworkDatagram datagram = udp_socket->receiveDatagram();
-
-                stat.sec.packet_counter++;
-                stat.sec.byte_counter += datagram.data().size();
-
-                struct packet_header *packet_header =
-                        reinterpret_cast<struct packet_header *>(datagram.data().data());
-
-                if (checkHeader(packet_header) != true)
-                {
-                    return;
-                }
-
-                // проверка данных пакета
-
-                if ((sizeof(struct packet_header) + packet_header->data_size) != datagram.data().size())
-                {
-                    stat.sec.error_counter++; // не хватило данных
-                }
-
+        if ((sizeof(struct packet_header) + packet_header->data_size) != datagram.data().size())
+        {
+            stat.sec.error_counter++; // не хватило данных
+        }
 
         // указатель на начало полезных данных
 
         const char *payload_data = datagram.data().data() + sizeof(struct packet_header);
-        size_t payload_size = packet_header->data_size;
+        //size_t payload_size = packet_header->data_size;
 
-        // Обработка полезных данных
-
-        processData(payload_data, payload_size);
-
-        //реализация сохранения в csv файл
-
-         // const char *payload_data = datagram.data().data() + sizeof(struct packet_header);
-         //         size_t payload_size = packet_header->data_size;
-
-//                 QByteArray payload(payload_data, payload_size);
-
-//                 // открытие CSV файла для добавления новых строк
-
-//                 QFile file("received_data.csv");
-//                        if (file.open(QIODevice::Append | QIODevice::Text))
-//                        {
-//                            QTextStream out(&file);
-
-//                            // если файл только создан, добавим заголовок
-
-//                            if (file.size() == 0)
-//                            {
-//                                out << "Payload Size,Payload Data (Hex)\n";
-//                            }
-
-//                            // Форматируем данные для строки CSV
-
-//                            QString payloadHex = payload.toHex(' ');
-
-
-//                            out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << ", ";
-//                            out << payload.toHex(' ') << '\n';
-// //
-
-//                            file.close();
-//                        }
-
-        //Реализация сохранения в txt файл
-
-//        const char *payload_data = datagram.data().data() + sizeof(struct packet_header);
-//                size_t payload_size = packet_header->data_size;
-
-//                QByteArray payload(payload_data, payload_size);
-
-//                QFile file("received_data.txt");
-//                if (file.open(QIODevice::Append | QIODevice::Text))
-//                {
-//                    QTextStream out(&file);
-////                    out << QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") << ": ";
-//                    out << payload.toHex(' ') << '\n';
-//                    file.close();
-//                }
+        // Отправка данных в буффер
+        blocking_queue->Enqueue(payload_data);
     }
 }
-
-void MainWindow::startRecording(int duration_ms)
-{
-    recording = true;
-
-    // таймер для остановки записи через указанное время
-
-    QTimer::singleShot(duration_ms, this, &MainWindow::stopRecording);
-}
-
-void MainWindow::stopRecording()
-{
-    recording = false;
-    qDebug() << "Recording stopped.";
-}
-
-void MainWindow::processData(const char *data, size_t size)
-{
-//    // реализация обработки полученных данных
-
-//    QByteArray payload(data, static_cast<int>(size));
-//    qDebug() << "Полученные данные:" << payload.toHex();
-////    logPacketData(packet_header(),payload);
-
-}
-
-//Симуляция тестового пакета
-
-//void MainWindow::simulateTestPacket()
-//{
-//    // 1. создаем тестовый заголовок пакета
-
-//    packet_header testHeader;
-//    testHeader.protocol_version = protocol_version;
-//    testHeader.counter = stat.packet_counter + 1; // увеличиваем счетчик пакетов
-//    testHeader.flasgs.overflow = 0;
-//    testHeader.timestamp = static_cast<uint32_t>(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
-
-//    // тестовый payload, например строка ""
-
-//    QByteArray testPayload("TestData");
-//    testHeader.data_size = testPayload.size();
-//    // примерное значение buf_size, можно задать в зависимости от тестовых сценариев
-//    testHeader.buf_size = BUF_NUMBER;
-
-//    // 2. собираем полный пакет
-
-//    QByteArray packet;
-//    packet.append(reinterpret_cast<const char*>(&testHeader), sizeof(testHeader));
-//    packet.append(testPayload);
-
-//    // 3. имитируем обработку полученного пакета
-//    //проверить заголовок
-
-//    if (!checkHeader(&testHeader)) {
-//        qDebug() << "Ошибка проверки тестового пакета";
-//        return;
-//    }
-
-//    // логирование (если реализована функция logPacketData)
-
-//    logPacketData(testHeader, testPayload);
-
-//    // передаем данные в обработчик полезной нагрузки
-
-//    processData(packet.data() + sizeof(testHeader), testPayload.size());
-
-//    qDebug() << "Тестовый пакет успешно обработан";
-//}
-
-
-//void MainWindow::logPacketData(const struct packet_header &header, const QByteArray &data) {
-//    QFile file("packet_log.txt");  // Имя файла для логирования
-//    if (file.open(QIODevice::Append | QIODevice::Text)) {
-//        QTextStream out(&file);
-
-//        // Форматируем данные пакета
-//        out << "Timestamp: " << header.timestamp << "\n";
-//        out << "Packet Size: " << (sizeof(struct packet_header) + header.data_size) << " bytes\n";
-//        out << "Data: " << data.toHex() << "\n";
-//        out << "------------------------------------\n";
-
-//        file.close();
-//    }
-//}
