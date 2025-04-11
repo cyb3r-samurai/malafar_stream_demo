@@ -9,11 +9,11 @@
 
 struct CsvBuffer
 {
-    QVector<QString> lines;
+    QVector<QByteArray> lines;
     QMutex mutex;
 
-    void append(const QString& line);
-    QVector<QString> takeAll();
+    void append(const QByteArray& line);
+    QVector<QByteArray> takeAll();
 };
 
 class CsvWriter : public QObject
@@ -23,12 +23,20 @@ public:
     explicit CsvWriter(QVector<CsvBuffer *>* buffers,
                        QObject *parrent = nullptr);
 
+signals:
+    void writingFinished();
+
 public slots:
     void flushBuffers();
+    void onTimerFineshed();
 private:
     QVector<CsvBuffer *> * m_buffers;
     QVector<QFile *> m_files;
     QVector<QTextStream *> m_streams;
+
+    bool finished;
+
+    void closeFiles();
 };
 
 #endif // CSVWRITER_H

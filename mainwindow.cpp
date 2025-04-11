@@ -50,8 +50,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     reset_flag = false;
 
-    blocking_queue = new BlockingQueue;
-
     tcp_socket = new QTcpSocket(this);
     tcp_socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
 
@@ -94,13 +92,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     {
         statusBar()->showMessage("UDP " + udp_socket->errorString(), ERR_TIME_MS);
     });
-
+    connect(udp_socket, &QUdpSocket::stateChanged, this, [this](int state)
+            {
+                if (state == QAbstractSocket::UnconnectedState)
+                {
+                    recieve_timer->stop();                                  // Stop polling
+                }
+                else if (state == QAbstractSocket::ConnectedState)
+                {
+                    qDebug() << "Connection established";                    // Start polling
+                }
+            });
     connect(udp_socket, &QUdpSocket::readyRead, this, &MainWindow::readyReadUdp);
 
     //----------------------------------------------------------------------------------------------
 
     timer = new QTimer(this);
-
+    recieve_timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &MainWindow::secTimeout);
 
     //----------------------------------------------------------------------------------------------
@@ -113,6 +121,40 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     this->restoreGeometry(settings->value("windowGeometry").toByteArray());
     this->restoreState(settings->value("windowsState").toByteArray());
     ui->address->setText(settings->value("address", "localhost").toString());
+
+    //----------------------------------------------------------------------------------------------
+
+
+    blocking_queue = new BlockingQueue;
+    processor_thread = new QThread;
+    m_processor = new Processor(blocking_queue);
+    m_processor->moveToThread(processor_thread);
+    connect(recieve_timer, &QTimer::timeout, m_processor, &Processor::onTimerFinished,
+        Qt::QueuedConnection);
+
+    connect(recieve_timer, &QTimer::timeout, this, []()
+            {
+                 qDebug() << "timer ended";
+             });
+
+    connect(recieve_timer, &QTimer::timeout, this, [this]()
+            {
+                udp_socket->disconnectFromHost();
+            });
+
+    connect(processor_thread, &QThread::started,
+             m_processor, &Processor::processData);
+    connect(m_processor, &Processor::processorFinished,
+            this, []() {
+        qDebug() << "processor Finished";
+    });
+    connect(m_processor, &Processor::processorFinished,
+             processor_thread, &QThread::quit);
+    connect(m_processor, &Processor::processorFinished,
+            m_processor, &Processor::deleteLater);
+    connect(processor_thread, &QThread::finished,
+             processor_thread, &QThread::deleteLater);
+
 }
 
 MainWindow::~MainWindow()
@@ -129,6 +171,9 @@ MainWindow::~MainWindow()
 void MainWindow::on_connectButton_clicked()
 {
     statusBar()->clearMessage();
+
+    qDebug() << "Mainwindow  thread id";
+    qDebug() << QThread::currentThreadId();
     if (tcp_socket->state() != QTcpSocket::ConnectedState)
     {
         const QUrl url = QUrl::fromUserInput(ui->address->text());
@@ -136,6 +181,9 @@ void MainWindow::on_connectButton_clicked()
         udp_socket->bind(QHostAddress::Any, url.port(9999));
 
         stat_reset();
+
+        recieve_timer->start(5000);
+        processor_thread->start();
     }
     else
     {
@@ -339,28 +387,29 @@ void MainWindow::readyReadUdp()
         QNetworkDatagram datagram = udp_socket->receiveDatagram();
 
         stat.sec.packet_counter++;
-        stat.sec.byte_counter += datagram.data().size();
+        // stat.sec.byte_counter += datagram.data().size();
 
-        struct packet_header *packet_header =
-            reinterpret_cast<struct packet_header *>(datagram.data().data());
+        // struct packet_header *packet_header =
+        //     reinterpret_cast<struct packet_header *>(datagram.data().data());
 
-        if (checkHeader(packet_header) != true)
-        {
-            return;
-        }
+        // if (checkHeader(packet_header) != true)
+        // {
+        //     return;
+        // }
 
-        // проверка данных пакета
+        // // проверка данных пакета
 
-        if ((sizeof(struct packet_header) + packet_header->data_size) != datagram.data().size())
-        {
-            stat.sec.error_counter++; // не хватило данных
-        }
+        // if ((sizeof(struct packet_header) + packet_header->data_size) != datagram.data().size())
+        // {
+        //     stat.sec.error_counter++; // не хватило данных
+        // }
 
         // указатель на начало полезных данных
 
-        const char *payload_data = datagram.data().data() + sizeof(struct packet_header);
+        const char *payload_data = datagram.data().data();// + sizeof(struct packet_header);
+     //   QByteArray dat = payload_data;
         //size_t payload_size = packet_header->data_size;
-
+   //     qDebug() << dat.size();
         // Отправка данных в буффер
         blocking_queue->Enqueue(payload_data);
     }

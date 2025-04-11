@@ -4,6 +4,7 @@
 #define MAINWINDOW_H
 
 #include "blockingqueue.h"
+#include "processor.h"
 
 #include <QMainWindow>
 #include <QTimer>
@@ -12,6 +13,7 @@
 #include <QProgressBar>
 #include <QTcpSocket>
 #include <QUdpSocket>
+#include <QThread>
 
 #include <QDateTime>
 #include <QTime>
@@ -40,12 +42,6 @@ private slots:
     void readyReadTcp();
     void readyReadUdp();
     void printStat();
-    void processData(const  char *data, size_t);
-//    void logPacketData(const struct packet_header &header, const QByteArray &data);
-//    void simulateTestPacket();
-    void startRecording(int);
-    void stopRecording();
-
 
 private:
 
@@ -55,6 +51,8 @@ private:
     Ui::MainWindow *ui;
     QTcpSocket *tcp_socket;
     QUdpSocket *udp_socket;
+    Processor *m_processor;
+    QThread *processor_thread;
     QTimer *timer;
     QSettings *settings;
     QTimer *recieve_timer;

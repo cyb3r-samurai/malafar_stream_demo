@@ -2,37 +2,62 @@
 
 #include <QDebug>
 #include <QtEndian>
+#include <QThread>
 
 Processor::Processor(BlockingQueue *queue, QObject *parent)
     : QObject{parent}, m_queue{queue}
 {
-    file_vec.reserve(6);
-    for(int i = 0; i < 6; i++) {
-        QString name = QString("chanel_%1.dat").arg(i);
-        QFile* f = new QFile(name);
-        f->open(QIODevice::WriteOnly | QIODevice::Append);
-        file_vec[i] = f;
+    qDebug() << "Processor created";
+    for (int i = 0; i < 6; ++i) {
+        m_buffers.append(new CsvBuffer);
     }
+
+    writer_thread = new QThread();
+    m_writer = new CsvWriter(&m_buffers);
+
+    connect(writer_thread, &QThread::started,
+            m_writer, &CsvWriter::flushBuffers);
+    connect(m_writer, &CsvWriter::writingFinished,
+            writer_thread, &QThread::quit);
+    connect(m_writer, &CsvWriter::writingFinished,
+            m_writer, &CsvWriter::deleteLater);
+    connect(writer_thread, &QThread::finished,
+            writer_thread, &QThread::deleteLater);
+
+    connect(m_writer,&CsvWriter::writingFinished,
+            this, &Processor::onCsvWritingFinished);
+
+    m_writer->moveToThread(writer_thread);
 }
 
 void Processor::processData()
 {
+    qDebug() << "ProcessData started";
+    writer_thread->start();
+    qDebug() << QThread::currentThreadId();
     QByteArray data;
+    while (!finished) {
 
-    while (!time_ended) {
         while(true) {
             data = m_queue->Dequeue();
-
             if (data.isEmpty()) {
                 break;
             }
+//            qDebug() << "message get" ;
             processPacket(data);
         }
     }
 }
 
+void Processor::onTimerFinished()
+{
+    qDebug() << "Timer finished";
+    finished = true;
+}
+
 void Processor::processPacket(const QByteArray &data)
 {
+  //  qDebug() << "processing started";
     const int chanel_count = 6;
     const int report_size = 4;
 
@@ -50,7 +75,15 @@ void Processor::processPacket(const QByteArray &data)
             const int16_t* report = reinterpret_cast<const int16_t *>(char_data+offset);
             int16_t i_data = qFromLittleEndian<qint16>(report[0]);
             int16_t q_data = qFromLittleEndian<qint16>(report[1]);
-            QString line = QString("%1;%2").arg(i_data, q_data);
+            QByteArray byte_line = QByteArray::number(i_data) + ";"
+                                   + QByteArray::number(q_data);
+            m_buffers[ch]->append(byte_line);
         }
     }
+}
+
+void Processor::onCsvWritingFinished()
+{
+    qDebug() <<" CsvWritingFinished";
+    emit processorFinished();
 }

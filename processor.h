@@ -14,15 +14,18 @@ public:
     explicit Processor(BlockingQueue *queue, QObject *parent = nullptr);
 public slots:
     void processData();
-    void on_time_ending();
+    void onTimerFinished();
+    void onCsvWritingFinished();
 
 signals:
+    void processorFinished();
 
 private:
     BlockingQueue *m_queue;
-    QVector<QFile *> file_vec;
-    bool time_ended = false;
+    bool finished = false;
+    CsvWriter *m_writer;
     QThread *writer_thread;
+    QVector<CsvBuffer *> m_buffers;
 
     void processPacket(const QByteArray &data);
     void writeToChanel(int file_number, const QByteArray &data);

@@ -1,4 +1,5 @@
 #include "blockingqueue.h"
+#include <QDebug>
 
 BlockingQueue::BlockingQueue() {}
 
@@ -6,6 +7,7 @@ void BlockingQueue::Enqueue(QByteArray msg)
 {
     QMutexLocker lock(&mut_);
     queue.enqueue(msg);
+  //  qDebug() << "message queued";
 }
 
 QByteArray BlockingQueue::Dequeue()
